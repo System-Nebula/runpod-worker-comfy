@@ -16,12 +16,13 @@ ENV PIP_PREFER_BINARY=1
 ENV PYTHONUNBUFFERED=1
 ENV CMAKE_BUILD_PARALLEL_LEVEL=8
 
-# ✅ add git-lfs here
+# Install system dependencies including git-lfs
 RUN apt-get update && apt-get install -y \
     python3.12 python3.12-venv git git-lfs wget \
     libgl1 libglib2.0-0 libsm6 libxext6 libxrender1 \
     ffmpeg \
     espeak-ng libespeak-ng1 \
+    build-essential \
  && git lfs install \
  && ln -sf /usr/bin/python3.12 /usr/bin/python \
  && ln -sf /usr/bin/pip3 /usr/bin/pip \
@@ -83,22 +84,22 @@ FROM base AS final
 
 COPY --from=downloader /comfyui/models /comfyui/models
 
-# Nodes
+# Install both nodes with appropriate Git LFS handling
 RUN comfy-node-install https://github.com/Enemyx-net/VibeVoice-ComfyUI && \
-    comfy-node-install https://github.com/snicolast/ComfyUI-IndexTTS2
+    GIT_LFS_SKIP_SMUDGE=1 comfy-node-install https://github.com/snicolast/ComfyUI-IndexTTS2
 
-# IndexTTS2 deps
+# Install IndexTTS2 dependencies with Git LFS skip to avoid audiotools test file issues
 RUN uv pip install wetext && \
-    uv pip install -r /comfyui/custom_nodes/ComfyUI-IndexTTS2/requirements.txt
+    GIT_LFS_SKIP_SMUDGE=1 uv pip install -r /comfyui/custom_nodes/ComfyUI-IndexTTS2/requirements.txt
 
-# ✅ Clone IndexTTS-2 once into the exact checkpoints path
+# Clone IndexTTS-2 model files into the exact checkpoints path
 RUN git lfs install && \
     git clone https://huggingface.co/IndexTeam/IndexTTS-2 /opt/IndexTTS-2 && \
     mkdir -p /comfyui/custom_nodes/ComfyUI-IndexTTS2/checkpoints && \
     cp -r /opt/IndexTTS-2/* /comfyui/custom_nodes/ComfyUI-IndexTTS2/checkpoints/ && \
     test -f /comfyui/custom_nodes/ComfyUI-IndexTTS2/checkpoints/config.yaml
 
-# ✅ W2V-BERT encoder
+# W2V-BERT encoder
 RUN python - <<'PY'
 from huggingface_hub import snapshot_download
 snapshot_download(
@@ -108,7 +109,7 @@ snapshot_download(
 )
 PY
 
-# ✅ BigVGAN vocoder (22kHz)
+# BigVGAN vocoder (22kHz)
 RUN mkdir -p /comfyui/custom_nodes/ComfyUI-IndexTTS2/checkpoints/bigvgan && \
     wget -qO /comfyui/custom_nodes/ComfyUI-IndexTTS2/checkpoints/bigvgan/config.json \
       https://huggingface.co/nvidia/bigvgan_v2_22khz_80band_256x/resolve/main/config.json && \
