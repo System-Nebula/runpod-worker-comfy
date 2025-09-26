@@ -16,12 +16,13 @@ ENV PIP_PREFER_BINARY=1
 ENV PYTHONUNBUFFERED=1
 ENV CMAKE_BUILD_PARALLEL_LEVEL=8
 
-# Core OS deps + audio/video + (optional) phonemizer backend
+# ✅ add git-lfs here
 RUN apt-get update && apt-get install -y \
-    python3.12 python3.12-venv git wget \
+    python3.12 python3.12-venv git git-lfs wget \
     libgl1 libglib2.0-0 libsm6 libxext6 libxrender1 \
     ffmpeg \
     espeak-ng libespeak-ng1 \
+ && git lfs install \
  && ln -sf /usr/bin/python3.12 /usr/bin/python \
  && ln -sf /usr/bin/pip3 /usr/bin/pip \
  && apt-get autoremove -y && apt-get clean -y && rm -rf /var/lib/apt/lists/*
@@ -43,20 +44,17 @@ RUN if [ -n "${CUDA_VERSION_FOR_COMFY}" ]; then \
       /usr/bin/yes | comfy --workspace /comfyui install --version "${COMFYUI_VERSION}" --nvidia; \
     fi
 
-# Optional: upgrade torch stack for your CUDA if needed
+# Optional: upgrade torch stack
 RUN if [ "$ENABLE_PYTORCH_UPGRADE" = "true" ]; then \
       uv pip install --force-reinstall torch torchvision torchaudio --index-url ${PYTORCH_INDEX_URL}; \
     fi
 
-# Place extra model paths
 WORKDIR /comfyui
 ADD src/extra_model_paths.yaml ./
-
-# Back to root
 WORKDIR /
 
-# Runtime deps for handler
-RUN uv pip install runpod requests websocket-client
+# Runtime deps for handler + snapshot_download
+RUN uv pip install runpod requests websocket-client huggingface-hub
 
 # App code & scripts
 ADD src/start.sh handler.py test_input.json ./
@@ -65,12 +63,10 @@ RUN chmod +x /start.sh
 # Helper scripts
 COPY scripts/comfy-node-install.sh /usr/local/bin/comfy-node-install
 RUN chmod +x /usr/local/bin/comfy-node-install
-
-ENV PIP_NO_INPUT=1
-
 COPY scripts/comfy-manager-set-mode.sh /usr/local/bin/comfy-manager-set-mode
 RUN chmod +x /usr/local/bin/comfy-manager-set-mode
 
+ENV PIP_NO_INPUT=1
 CMD ["/start.sh"]
 
 # ----------------------
@@ -85,18 +81,39 @@ RUN mkdir -p models/checkpoints models/vae models/unet models/clip
 # ----------------------
 FROM base AS final
 
-# Models (if any) copied from downloader stage
 COPY --from=downloader /comfyui/models /comfyui/models
 
-# Install VibeVoice and IndexTTS2 nodes
+# Nodes
 RUN comfy-node-install https://github.com/Enemyx-net/VibeVoice-ComfyUI && \
     comfy-node-install https://github.com/snicolast/ComfyUI-IndexTTS2
 
-# 🔧 IndexTTS2 Python deps (per README)
-# - wetext
-# - the node's requirements.txt
+# IndexTTS2 deps
 RUN uv pip install wetext && \
     uv pip install -r /comfyui/custom_nodes/ComfyUI-IndexTTS2/requirements.txt
+
+# ✅ Clone IndexTTS-2 once into the exact checkpoints path
+RUN git lfs install && \
+    git clone https://huggingface.co/IndexTeam/IndexTTS-2 /opt/IndexTTS-2 && \
+    mkdir -p /comfyui/custom_nodes/ComfyUI-IndexTTS2/checkpoints && \
+    cp -r /opt/IndexTTS-2/* /comfyui/custom_nodes/ComfyUI-IndexTTS2/checkpoints/ && \
+    test -f /comfyui/custom_nodes/ComfyUI-IndexTTS2/checkpoints/config.yaml
+
+# ✅ W2V-BERT encoder
+RUN python - <<'PY'
+from huggingface_hub import snapshot_download
+snapshot_download(
+    "facebook/w2v-bert-2.0",
+    local_dir="/comfyui/custom_nodes/ComfyUI-IndexTTS2/checkpoints/w2v-bert-2.0",
+    local_dir_use_symlinks=False
+)
+PY
+
+# ✅ BigVGAN vocoder (22kHz)
+RUN mkdir -p /comfyui/custom_nodes/ComfyUI-IndexTTS2/checkpoints/bigvgan && \
+    wget -qO /comfyui/custom_nodes/ComfyUI-IndexTTS2/checkpoints/bigvgan/config.json \
+      https://huggingface.co/nvidia/bigvgan_v2_22khz_80band_256x/resolve/main/config.json && \
+    wget -qO /comfyui/custom_nodes/ComfyUI-IndexTTS2/checkpoints/bigvgan/bigvgan_generator.pt \
+      https://huggingface.co/nvidia/bigvgan_v2_22khz_80band_256x/resolve/main/bigvgan_generator.pt
 
 # Input convenience
 COPY Input/ /comfyui/input/
