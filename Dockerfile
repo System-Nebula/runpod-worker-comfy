@@ -108,6 +108,7 @@ COPY --from=downloader /comfyui/models /comfyui/models
 
 # Install VibeVoice-ComfyUI
 RUN comfy-node-install https://github.com/Enemyx-net/VibeVoice-ComfyUI
+RUN comfy-node-install https://github.com/snicolast/ComfyUI-IndexTTS2
 
 # Copy default voice file
 COPY Input/ /comfyui/input/
