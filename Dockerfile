@@ -86,7 +86,6 @@ COPY --from=downloader /comfyui/models /comfyui/models
 
 # Install both nodes with appropriate Git LFS handling
 RUN comfy-node-install https://github.com/Enemyx-net/VibeVoice-ComfyUI && \
-    comfy node install seedvr2_videoupscaler && \
     GIT_LFS_SKIP_SMUDGE=1 comfy-node-install https://github.com/snicolast/ComfyUI-IndexTTS2
 
 # Install IndexTTS2 dependencies with Git LFS skip to avoid audiotools test file issues
