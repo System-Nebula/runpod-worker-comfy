@@ -11,9 +11,13 @@ services:
               capabilities: [gpu]
     environment:
       - SERVE_API_LOCALLY=true
+      - RUNPOD_VOLUME_PATH=/runpod-volume
+      - COMFYUI_MODEL_PATH=/runpod-volume/models
     ports:
       - "8000:8000"
       - "8188:8188"
     volumes:
       - ./data/comfyui/output:/comfyui/output
       - ./data/runpod-volume:/runpod-volume
+      - ./data/runpod-volume/models:/app/models
+      
