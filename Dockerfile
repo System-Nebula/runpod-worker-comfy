@@ -84,6 +84,7 @@ FROM base AS final
 
 COPY --from=downloader /comfyui/models /comfyui/models
 
+run comfy-node-install https://github.com/city96/ComfyUI-GGUF
 # Install both nodes with appropriate Git LFS handling
 RUN comfy-node-install https://github.com/Enemyx-net/VibeVoice-ComfyUI && \
     GIT_LFS_SKIP_SMUDGE=1 comfy-node-install https://github.com/snicolast/ComfyUI-IndexTTS2
