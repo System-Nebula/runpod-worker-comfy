@@ -90,32 +90,32 @@ RUN comfy-node-install https://github.com/Enemyx-net/VibeVoice-ComfyUI && \
     GIT_LFS_SKIP_SMUDGE=1 comfy-node-install https://github.com/snicolast/ComfyUI-IndexTTS2
 
 # Install IndexTTS2 dependencies with Git LFS skip to avoid audiotools test file issues
-RUN uv pip install wetext && \
-    GIT_LFS_SKIP_SMUDGE=1 uv pip install -r /comfyui/custom_nodes/ComfyUI-IndexTTS2/requirements.txt
+# RUN uv pip install wetext && \
+#    GIT_LFS_SKIP_SMUDGE=1 uv pip install -r /comfyui/custom_nodes/ComfyUI-IndexTTS2/requirements.txt
 
 # Clone IndexTTS-2 model files into the exact checkpoints path
-RUN git lfs install && \
-    git clone https://huggingface.co/IndexTeam/IndexTTS-2 /opt/IndexTTS-2 && \
-    mkdir -p /comfyui/custom_nodes/ComfyUI-IndexTTS2/checkpoints && \
-    cp -r /opt/IndexTTS-2/* /comfyui/custom_nodes/ComfyUI-IndexTTS2/checkpoints/ && \
-    test -f /comfyui/custom_nodes/ComfyUI-IndexTTS2/checkpoints/config.yaml
+# RUN git lfs install && \
+#    git clone https://huggingface.co/IndexTeam/IndexTTS-2 /opt/IndexTTS-2 && \
+#    mkdir -p /comfyui/custom_nodes/ComfyUI-IndexTTS2/checkpoints && \
+#    cp -r /opt/IndexTTS-2/* /comfyui/custom_nodes/ComfyUI-IndexTTS2/checkpoints/ && \
+#    test -f /comfyui/custom_nodes/ComfyUI-IndexTTS2/checkpoints/config.yaml
 
 # W2V-BERT encoder
-RUN python - <<'PY'
-from huggingface_hub import snapshot_download
-snapshot_download(
-    "facebook/w2v-bert-2.0",
-    local_dir="/comfyui/custom_nodes/ComfyUI-IndexTTS2/checkpoints/w2v-bert-2.0",
-    local_dir_use_symlinks=False
-)
-PY
+# RUN python - <<'PY'
+# from huggingface_hub import snapshot_download
+# snapshot_download(
+#     "facebook/w2v-bert-2.0",
+#     local_dir="/comfyui/custom_nodes/ComfyUI-IndexTTS2/checkpoints/w2v-bert-2.0",
+#    local_dir_use_symlinks=False
+#)
+# PY
 
 # BigVGAN vocoder (22kHz)
-RUN mkdir -p /comfyui/custom_nodes/ComfyUI-IndexTTS2/checkpoints/bigvgan && \
-    wget -qO /comfyui/custom_nodes/ComfyUI-IndexTTS2/checkpoints/bigvgan/config.json \
-      https://huggingface.co/nvidia/bigvgan_v2_22khz_80band_256x/resolve/main/config.json && \
-    wget -qO /comfyui/custom_nodes/ComfyUI-IndexTTS2/checkpoints/bigvgan/bigvgan_generator.pt \
-      https://huggingface.co/nvidia/bigvgan_v2_22khz_80band_256x/resolve/main/bigvgan_generator.pt
+# RUN mkdir -p /comfyui/custom_nodes/ComfyUI-IndexTTS2/checkpoints/bigvgan && \
+#    wget -qO /comfyui/custom_nodes/ComfyUI-IndexTTS2/checkpoints/bigvgan/config.json \
+#      https://huggingface.co/nvidia/bigvgan_v2_22khz_80band_256x/resolve/main/config.json && \
+#    wget -qO /comfyui/custom_nodes/ComfyUI-IndexTTS2/checkpoints/bigvgan/bigvgan_generator.pt \
+#      https://huggingface.co/nvidia/bigvgan_v2_22khz_80band_256x/resolve/main/bigvgan_generator.pt
 
 # Input convenience
 COPY Input/ /comfyui/input/
