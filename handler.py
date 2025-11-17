@@ -291,18 +291,19 @@ def upload_images(images):
 
 def get_available_models():
     """
-    Get list of available models from ComfyUI
+    Get list of available models from ComfyUI for various node types
 
     Returns:
-        dict: Dictionary containing available models by type
+        dict: Dictionary containing available models by type and node class
     """
     try:
         response = requests.get(f"http://{COMFY_HOST}/object_info", timeout=10)
         response.raise_for_status()
         object_info = response.json()
 
-        # Extract available checkpoints from CheckpointLoaderSimple
         available_models = {}
+        
+        # Extract available checkpoints from CheckpointLoaderSimple
         if "CheckpointLoaderSimple" in object_info:
             checkpoint_info = object_info["CheckpointLoaderSimple"]
             if "input" in checkpoint_info and "required" in checkpoint_info["input"]:
@@ -310,6 +311,31 @@ def get_available_models():
                 if ckpt_options and len(ckpt_options) > 0:
                     available_models["checkpoints"] = (
                         ckpt_options[0] if isinstance(ckpt_options[0], list) else []
+                    )
+
+        # Extract available CLIP models from DualCLIPLoader
+        if "DualCLIPLoader" in object_info:
+            dual_clip_info = object_info["DualCLIPLoader"]
+            if "input" in dual_clip_info and "required" in dual_clip_info["input"]:
+                clip1_options = dual_clip_info["input"]["required"].get("clip_name1")
+                clip2_options = dual_clip_info["input"]["required"].get("clip_name2")
+                if clip1_options and len(clip1_options) > 0:
+                    available_models["clip_name1"] = (
+                        clip1_options[0] if isinstance(clip1_options[0], list) else []
+                    )
+                if clip2_options and len(clip2_options) > 0:
+                    available_models["clip_name2"] = (
+                        clip2_options[0] if isinstance(clip2_options[0], list) else []
+                    )
+
+        # Extract available UNET models from UnetLoaderGGUF
+        if "UnetLoaderGGUF" in object_info:
+            unet_info = object_info["UnetLoaderGGUF"]
+            if "input" in unet_info and "required" in unet_info["input"]:
+                unet_options = unet_info["input"]["required"].get("unet_name")
+                if unet_options and len(unet_options) > 0:
+                    available_models["unet_name"] = (
+                        unet_options[0] if isinstance(unet_options[0], list) else []
                     )
 
         return available_models
@@ -364,13 +390,38 @@ def queue_workflow(workflow, client_id):
                     error_message = str(error_info)
 
             # Check for node validation errors in the response
+            node_errors_dict = {}
             if "node_errors" in error_data:
                 for node_id, node_error in error_data["node_errors"].items():
+                    node_errors_dict[node_id] = node_error
                     if isinstance(node_error, dict):
-                        for error_type, error_msg in node_error.items():
-                            error_details.append(
-                                f"Node {node_id} ({error_type}): {error_msg}"
-                            )
+                        # Extract class_type for later use
+                        node_class = node_error.get("class_type", "Unknown")
+                        # Format error details for display
+                        if "errors" in node_error:
+                            errors_list = node_error["errors"]
+                            error_summary = []
+                            for err in errors_list:
+                                if isinstance(err, dict):
+                                    err_msg = err.get("message", "")
+                                    err_details = err.get("details", "")
+                                    if err_details:
+                                        error_summary.append(err_details)
+                                    elif err_msg:
+                                        error_summary.append(err_msg)
+                            if error_summary:
+                                error_details.append(
+                                    f"Node {node_id} ({node_class}): {'; '.join(error_summary)}"
+                                )
+                            else:
+                                error_details.append(f"Node {node_id} ({node_class}): Validation error")
+                        else:
+                            # Fallback: format all keys as error details
+                            for error_type, error_msg in node_error.items():
+                                if error_type != "class_type" and error_type != "dependent_outputs":
+                                    error_details.append(
+                                        f"Node {node_id} ({error_type}): {error_msg}"
+                                    )
                     else:
                         error_details.append(f"Node {node_id}: {node_error}")
 
@@ -396,16 +447,104 @@ def queue_workflow(workflow, client_id):
                     f"• {detail}" for detail in error_details
                 )
 
-                # Try to provide helpful suggestions for common errors
-                if any(
-                    "not in list" in detail and "ckpt_name" in detail
-                    for detail in error_details
-                ):
-                    available_models = get_available_models()
-                    if available_models.get("checkpoints"):
-                        detailed_message += f"\n\nAvailable checkpoint models: {', '.join(available_models['checkpoints'])}"
+                # Extract model information from node errors and provide available alternatives
+                available_models = get_available_models()
+                model_suggestions = []
+                
+                # Parse node_errors to extract missing model information
+                for node_id, node_error in node_errors_dict.items():
+                    if isinstance(node_error, dict) and "errors" in node_error:
+                        node_class = node_error.get("class_type", "Unknown")
+                        for error_item in node_error["errors"]:
+                            if isinstance(error_item, dict) and error_item.get("type") == "value_not_in_list":
+                                extra_info = error_item.get("extra_info", {})
+                                input_name = extra_info.get("input_name")
+                                received_value = extra_info.get("received_value")
+                                input_config = extra_info.get("input_config", [])
+                                
+                                # Extract available values from input_config (format: [[list_of_available], {}])
+                                available_list = []
+                                if isinstance(input_config, list) and len(input_config) > 0:
+                                    if isinstance(input_config[0], list):
+                                        available_list = input_config[0]
+                                
+                                # Map input names to available models from ComfyUI
+                                if input_name == "clip_name1":
+                                    if available_models.get("clip_name1"):
+                                        model_suggestions.append(
+                                            f"Node {node_id} ({node_class}): Available clip_name1 models: {', '.join(available_models['clip_name1'])}"
+                                        )
+                                    elif available_list:
+                                        model_suggestions.append(
+                                            f"Node {node_id} ({node_class}): Available clip_name1 models: {', '.join(available_list)}"
+                                        )
+                                    else:
+                                        model_suggestions.append(
+                                            f"Node {node_id} ({node_class}): Requested '{received_value}' for clip_name1 is not available (no models found)."
+                                        )
+                                elif input_name == "clip_name2":
+                                    if available_models.get("clip_name2"):
+                                        model_suggestions.append(
+                                            f"Node {node_id} ({node_class}): Available clip_name2 models: {', '.join(available_models['clip_name2'])}"
+                                        )
+                                    elif available_list:
+                                        model_suggestions.append(
+                                            f"Node {node_id} ({node_class}): Available clip_name2 models: {', '.join(available_list)}"
+                                        )
+                                    else:
+                                        model_suggestions.append(
+                                            f"Node {node_id} ({node_class}): Requested '{received_value}' for clip_name2 is not available (no models found)."
+                                        )
+                                elif input_name == "unet_name":
+                                    if available_models.get("unet_name"):
+                                        model_suggestions.append(
+                                            f"Node {node_id} ({node_class}): Available unet_name models: {', '.join(available_models['unet_name'])}"
+                                        )
+                                    elif available_list:
+                                        model_suggestions.append(
+                                            f"Node {node_id} ({node_class}): Available unet_name models: {', '.join(available_list)}"
+                                        )
+                                    else:
+                                        model_suggestions.append(
+                                            f"Node {node_id} ({node_class}): Requested '{received_value}' for unet_name is not available (no models found)."
+                                        )
+                                elif input_name == "ckpt_name":
+                                    if available_models.get("checkpoints"):
+                                        model_suggestions.append(
+                                            f"Node {node_id} ({node_class}): Available checkpoint models: {', '.join(available_models['checkpoints'])}"
+                                        )
+                                    elif available_list:
+                                        model_suggestions.append(
+                                            f"Node {node_id} ({node_class}): Available checkpoint models: {', '.join(available_list)}"
+                                        )
+                                    else:
+                                        model_suggestions.append(
+                                            f"Node {node_id} ({node_class}): Requested '{received_value}' for ckpt_name is not available (no models found)."
+                                        )
+                                elif received_value:
+                                    # Generic fallback for any missing model
+                                    suggestion_key = f"{node_id}_{input_name}"
+                                    if not any(suggestion_key in s for s in model_suggestions):
+                                        if available_list:
+                                            model_suggestions.append(
+                                                f"Node {node_id} ({node_class}): Available {input_name} models: {', '.join(available_list)}"
+                                            )
+                                        else:
+                                            model_suggestions.append(
+                                                f"Node {node_id} ({node_class}): Requested '{received_value}' for '{input_name}' is not available."
+                                            )
+
+                # Add available model suggestions to the error message
+                if model_suggestions:
+                    detailed_message += "\n\nAvailable models:\n" + "\n".join(
+                        f"  • {suggestion}" for suggestion in model_suggestions
+                    )
+                elif any("not in list" in detail for detail in error_details):
+                    # Fallback: if we couldn't parse specific models, at least mention what we found
+                    if available_models:
+                        detailed_message += "\n\nNote: Some models may be available. Check your workflow configuration."
                     else:
-                        detailed_message += "\n\nNo checkpoint models appear to be available. Please check your model installation."
+                        detailed_message += "\n\nNo models appear to be available. Please check your model installation."
 
                 raise ValueError(detailed_message)
             else:
