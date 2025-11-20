@@ -57,65 +57,31 @@ WORKDIR /
 # Runtime deps for handler + snapshot_download
 RUN uv pip install runpod requests websocket-client huggingface-hub
 
-# App code & scripts
 ADD src/start.sh handler.py test_input.json ./
 RUN chmod +x /start.sh
 
-# Helper scripts
 COPY scripts/comfy-node-install.sh /usr/local/bin/comfy-node-install
 RUN chmod +x /usr/local/bin/comfy-node-install
 COPY scripts/comfy-manager-set-mode.sh /usr/local/bin/comfy-manager-set-mode
 RUN chmod +x /usr/local/bin/comfy-manager-set-mode
 
 ENV PIP_NO_INPUT=1
-CMD ["/start.sh"]
+CMD ["opentelemetry-instrument","/start.sh"]
 
-# ----------------------
-# Stage 2: Downloader
-# ----------------------
 FROM base AS downloader
 WORKDIR /comfyui
 RUN mkdir -p models/checkpoints models/vae models/unet models/clip
 
-# ----------------------
-# Stage 3: Final
-# ----------------------
 FROM base AS final
 
 COPY --from=downloader /comfyui/models /comfyui/models
 
-run comfy-node-install https://github.com/city96/ComfyUI-GGUF
+# Installing otel stuff
+RUN pip install opentelemetry-distro && pip install opentelemetry-exporter-otlp
+
+RUN opentelemetry-bootstrap --action=install
+RUN comfy-node-install https://github.com/city96/ComfyUI-GGUF
 # Install both nodes with appropriate Git LFS handling
 RUN comfy-node-install https://github.com/Enemyx-net/VibeVoice-ComfyUI && \
     GIT_LFS_SKIP_SMUDGE=1 comfy-node-install https://github.com/snicolast/ComfyUI-IndexTTS2
-
-# Install IndexTTS2 dependencies with Git LFS skip to avoid audiotools test file issues
-# RUN uv pip install wetext && \
-#    GIT_LFS_SKIP_SMUDGE=1 uv pip install -r /comfyui/custom_nodes/ComfyUI-IndexTTS2/requirements.txt
-
-# Clone IndexTTS-2 model files into the exact checkpoints path
-# RUN git lfs install && \
-#    git clone https://huggingface.co/IndexTeam/IndexTTS-2 /opt/IndexTTS-2 && \
-#    mkdir -p /comfyui/custom_nodes/ComfyUI-IndexTTS2/checkpoints && \
-#    cp -r /opt/IndexTTS-2/* /comfyui/custom_nodes/ComfyUI-IndexTTS2/checkpoints/ && \
-#    test -f /comfyui/custom_nodes/ComfyUI-IndexTTS2/checkpoints/config.yaml
-
-# W2V-BERT encoder
-# RUN python - <<'PY'
-# from huggingface_hub import snapshot_download
-# snapshot_download(
-#     "facebook/w2v-bert-2.0",
-#     local_dir="/comfyui/custom_nodes/ComfyUI-IndexTTS2/checkpoints/w2v-bert-2.0",
-#    local_dir_use_symlinks=False
-#)
-# PY
-
-# BigVGAN vocoder (22kHz)
-# RUN mkdir -p /comfyui/custom_nodes/ComfyUI-IndexTTS2/checkpoints/bigvgan && \
-#    wget -qO /comfyui/custom_nodes/ComfyUI-IndexTTS2/checkpoints/bigvgan/config.json \
-#      https://huggingface.co/nvidia/bigvgan_v2_22khz_80band_256x/resolve/main/config.json && \
-#    wget -qO /comfyui/custom_nodes/ComfyUI-IndexTTS2/checkpoints/bigvgan/bigvgan_generator.pt \
-#      https://huggingface.co/nvidia/bigvgan_v2_22khz_80band_256x/resolve/main/bigvgan_generator.pt
-
-# Input convenience
 COPY Input/ /comfyui/input/
