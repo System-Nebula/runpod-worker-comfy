@@ -66,7 +66,8 @@ COPY scripts/comfy-manager-set-mode.sh /usr/local/bin/comfy-manager-set-mode
 RUN chmod +x /usr/local/bin/comfy-manager-set-mode
 
 ENV PIP_NO_INPUT=1
-CMD ["opentelemetry-instrument","/start.sh"]
+ENV OTEL_PYTHON_LOGGING_AUTO_INSTRUMENTATION_ENABLED=true
+CMD ["opentelemetry-instrument", "--traces_exporter", "otlp","--metrics_exporter", "otlp","--logs_exporter","otlp","/start.sh"]
 
 FROM base AS downloader
 WORKDIR /comfyui
