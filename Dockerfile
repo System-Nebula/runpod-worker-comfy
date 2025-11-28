@@ -82,6 +82,10 @@ RUN pip install opentelemetry-distro && pip install opentelemetry-exporter-otlp
 
 RUN opentelemetry-bootstrap --action=install
 RUN comfy-node-install https://github.com/city96/ComfyUI-GGUF
+RUN comfy-node-install https://github.com/rgthree/rgthree-comfy
+RUN comfy-node-install https://github.com/ClownsharkBatwing/RES4LYF
+RUN comfy-node-install https://github.com/giriss/comfy-image-saver
+
 # Install both nodes with appropriate Git LFS handling
 RUN comfy-node-install https://github.com/Enemyx-net/VibeVoice-ComfyUI && \
     GIT_LFS_SKIP_SMUDGE=1 comfy-node-install https://github.com/snicolast/ComfyUI-IndexTTS2
